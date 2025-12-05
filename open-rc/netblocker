@@ -1,0 +1,30 @@
+#!/sbin/openrc-run
+
+# Description: Netblocker service to block network at scheduled times
+
+command="/usr/local/bin/netblocker"   # adjust if your binary is elsewhere
+command_args=""
+pidfile="/var/run/netblocker.pid"
+name="netblocker"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath --directory --mode 0755 /var/run
+}
+
+start() {
+    ebegin "Starting ${name}..."
+    start-stop-daemon --start --quiet --background --make-pidfile --pidfile $pidfile --exec $command -- $command_args
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping ${name}..."
+    start-stop-daemon --stop --quiet --pidfile $pidfile
+    eend $?
+}
+

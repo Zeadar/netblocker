@@ -147,6 +147,13 @@ void *scheduler(void *time_ptr) {
 }
 
 int main() {
+    __uid_t user = geteuid();
+
+    if (user != 0) {
+        fprintf(stderr, "Must run as root\n");
+        return 200;
+    }
+
     struct times target_times = parse_config();
     struct sigaction sa = { 0 };
     sa.sa_handler = exit_handler;
