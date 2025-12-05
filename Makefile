@@ -5,7 +5,7 @@ TARGET = $(OBJDIR)/out
 SRCS = waitforwakeup.c parse_config.c main.c
 OBJS = $(addprefix $(OBJDIR)/, $(SRCS:.c=.o))
 CFLAGS=$(shell pkg-config --cflags libelogind) -Wextra -Wall
-LDFLAGS=$(shell pkg-config --libs libelogind) -lpthread
+LDFLAGS=$(shell pkg-config --libs libelogind)
 
 all: debug
 
