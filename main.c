@@ -147,15 +147,14 @@ void *scheduler(void *time_ptr) {
 }
 
 int main() {
-    __uid_t user = geteuid();
-
-    if (user != 0) {
+    if (geteuid() != 0) {
         fprintf(stderr, "Must run as root\n");
         return 200;
     }
 
     struct times target_times = parse_config();
     struct sigaction sa = { 0 };
+    pthread_t thr;
     sa.sa_handler = exit_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
@@ -164,7 +163,6 @@ int main() {
     sigaction(SIGTERM, &sa, 0);
 
     for (;;) {
-        pthread_t thr;
         pthread_create(&thr, 0, scheduler, &target_times);
 
         int waitresult = wait_for_wakeup();

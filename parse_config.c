@@ -10,9 +10,15 @@
 
 #define START_EXPR "start="
 #define STOP_EXPR "stop="
+#define DAYS_EXPR "days="
 
-enum time_type {
-    ERROR_PARSING, ERROR_END_OF_FILE, ERROR_NEITHER, START, STOP,
+enum parse_type {
+    SUCCESS,
+    ERROR_PARSING,
+    ERROR_UNRECOGNIZED,
+    START,
+    STOP,
+    DAYS,
 };
 
 ptrdiff_t strip_fluff(char *line) {
@@ -38,75 +44,62 @@ ptrdiff_t strip_fluff(char *line) {
     return write - line;
 }
 
-enum time_type extract_time(FILE *config, char *buf,
-                            size_t *buf_size, int *time) {
-    ssize_t num_read;
-    enum time_type tt;
-    char *rvalue;
-    unsigned line = 1;
-
-    // scrolling through comments and blank lines
-    while ((num_read = getline(&buf, buf_size, config)) != EOF) {
-        line++;
-        if ((num_read = strip_fluff(buf)) != 0) {
-            break;
-        }
-    }
-
-    if (num_read == EOF)
-        return ERROR_END_OF_FILE;
-
-    if (strncmp(buf, START_EXPR, strlen(START_EXPR)) == 0) {
-        tt = START;
-        rvalue = buf + strlen(START_EXPR);
-        num_read -= strlen(START_EXPR);
-    } else if (strncmp(buf, STOP_EXPR, strlen(STOP_EXPR)) == 0) {
-        tt = STOP;
-        rvalue = buf + strlen(STOP_EXPR);
-        num_read -= strlen(STOP_EXPR);
-    } else {
-        fprintf(stderr, "Could not interpret [%s] on line %u\n", buf,
-                line);
-        return ERROR_NEITHER;
-    }
+enum parse_type parse_time(char *buf, int *out_buf) {
+    unsigned num_read = strlen(buf);
 
     if (num_read != 5) {
-        fprintf(stderr,
-                "\"%s\" expected 24 hour format hh:mm on line (%u)\n",
-                rvalue, line);
+        fprintf(stderr, "\"%s\" expected 24 hour format hh:mm\n", buf);
         return ERROR_PARSING;
     }
 
-    if (rvalue[2] != ':') {
-        fprintf(stderr,
-                "\"%s\" expected 24 hour format hh:mm on line (%u)\n",
-                rvalue, line);
+    if (buf[2] != ':') {
+        fprintf(stderr, "\"%s\" expected 24 hour format hh:mm\n", buf);
         return ERROR_PARSING;
     }
 
-    rvalue[2] = '\0';
-    char *minute_rvalue = rvalue + 3;
+    buf[2] = '\0';
+    char *minute_buf = buf + 3;
 
-    for (char *c = rvalue; *c != '\0'; ++c) {
+    for (char *c = buf; *c != '\0'; ++c) {
         if (!isalnum(*c)) {
-            fprintf(stderr, "Could not parse \"%s\" as a numbers\n",
-                    rvalue);
+            fprintf(stderr, "Could not parse \"%s\" as a number\n", buf);
             return ERROR_PARSING;
         }
     }
 
-    for (char *c = minute_rvalue; *c != '\0'; ++c) {
+    for (char *c = minute_buf; *c != '\0'; ++c) {
         if (!isalnum(*c)) {
             fprintf(stderr, "Could not parse \"%s\" as a number\n",
-                    minute_rvalue);
+                    minute_buf);
             return ERROR_PARSING;
         }
     }
 
-    *time = atoi(rvalue) * 3600 + atoi(minute_rvalue) * 60;
-    printf("parsed time %d\n", *time);
+    *out_buf = atoi(buf) * 3600 + atoi(minute_buf) * 60;
 
-    return tt;
+    return SUCCESS;
+}
+
+enum parse_type get_type(char **buf) {
+    char *buffer = *buf;
+    unsigned len;
+    enum parse_type pt;
+
+    if (strncmp(buffer, START_EXPR, (len = strlen(START_EXPR))) == 0) {
+        pt = START;
+        *buf = buffer + len;
+    } else if (strncmp(buffer, STOP_EXPR, (len = strlen(STOP_EXPR))) == 0) {
+        pt = STOP;
+        *buf = buffer + len;
+    } else if (strncmp(buffer, DAYS_EXPR, (len = strlen(DAYS_EXPR))) == 0) {
+        pt = DAYS;
+        *buf = buffer + len;
+    } else {
+        fprintf(stderr, "Unrecognized thingie [%s]\n", buffer);
+        return ERROR_UNRECOGNIZED;
+    }
+
+    return pt;
 }
 
 struct times parse_config() {
@@ -120,33 +113,54 @@ struct times parse_config() {
     }
     size_t buf_size = 4096;
     char *buf = malloc(buf_size);
-    struct times conf_times = { -1, -1 };
-    enum time_type tt;
-    int recieved_time;
+    char *temp_buf;
+    struct times conf_times = { -1, -1, 0 };
+    enum parse_type pt;
+    int num_read = 0;
+    int line_nr = 0;
+    int out_buf = 0;
 
     if (config == 0) {
         fprintf(stderr, "could not find %s\n", LOCAL_CONF_NAME);
         exit(1);
     }
 
-    while (conf_times.start == -1 || conf_times.stop == -1) {
-        tt = extract_time(config, buf, &buf_size, &recieved_time);
+    while ((num_read = getline(&buf, &buf_size, config)) != EOF) {
+        ++line_nr;
+        // scrolling through comments and blank lines
+        if ((num_read = strip_fluff(buf)) == 0)
+            continue;
 
-        switch (tt) {
+        temp_buf = buf;
+        pt = get_type(&temp_buf);
+
+        switch (pt) {
         case START:
-            conf_times.start = recieved_time;
+            pt = parse_time(temp_buf, &out_buf);
+            conf_times.start = out_buf;
             break;
         case STOP:
-            conf_times.stop = recieved_time;
+            pt = parse_time(temp_buf, &out_buf);
+            conf_times.stop = out_buf;
+            break;
+        case DAYS:
             break;
         default:
-            fprintf(stderr, "Encountered an error parsing config file\n");
+            fprintf(stderr,
+                    "Encountered an error parsing config file (%d)\n",
+                    line_nr);
             exit(300);
         }
+
     }
 
     fclose(config);
     free(buf);
+
+    if (conf_times.start == -1 || conf_times.stop == -1) {
+        fprintf(stderr, "Missing mandatory items in config\n");
+        exit(300);
+    }
 
     return conf_times;
 }
