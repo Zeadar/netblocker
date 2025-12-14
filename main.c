@@ -71,6 +71,35 @@ void exit_handler(int sig) {
     exit(0);
 }
 
+int skip_today(int tm_wday, int days) {
+    switch (tm_wday) {
+    case 0:
+        return days & SUNDAY;
+        break;
+    case 1:
+        return days & MONDAY;
+        break;
+    case 2:
+        return days & TUESDAY;
+        break;
+    case 3:
+        return days & WEDNESDAY;
+        break;
+    case 4:
+        return days & THURSDAY;
+        break;
+    case 5:
+        return days & FRIDAY;
+        break;
+    case 6:
+        return days & SATURDAY;
+        break;
+    }
+
+    // unreachable
+    return 0;
+}
+
 #ifdef DEBUG_BUILD
 void log_sleep_time(int time_in_sec) {
     int hours = time_in_sec / 60 / 60;
@@ -89,7 +118,8 @@ void *scheduler(void *time_ptr) {
     struct tm today = { 0 };
 
 #ifdef DEBUG_BUILD
-    printf("%d → %d\n", target_times->start, target_times->stop);
+    printf("%d → %d\nignore on days: %07b\n", target_times->start,
+           target_times->stop, target_times->days);
 #endif
 
     if (target_times->start < target_times->stop) {
@@ -98,7 +128,17 @@ void *scheduler(void *time_ptr) {
             now_epoch = time(0);
             localtime_r(&now_epoch, &today);
             now = today.tm_hour * 3600 + today.tm_min * 60 + today.tm_sec;
-            if (target_times->start <= now && target_times->stop > now) {
+
+            if (skip_today(today.tm_wday, target_times->days)) {
+                // ingnore rules today
+                // blocking should be off
+#ifdef DEBUG_BUILD
+                printf("Skipping today\n");
+#endif
+                delete_rules();
+                sleep_time = DAY_SEC - now;
+            } else if (target_times->start <= now
+                       && target_times->stop > now) {
                 // blocking should be on
                 add_rules();
                 sleep_time = target_times->stop - now;
@@ -122,7 +162,15 @@ void *scheduler(void *time_ptr) {
             now_epoch = time(0);
             localtime_r(&now_epoch, &today);
             now = today.tm_hour * 3600 + today.tm_min * 60 + today.tm_sec;
-            if (target_times->start <= now) {
+            if (skip_today(today.tm_wday, target_times->days)) {
+                // ingnore rules today
+                // blocking should be off
+#ifdef DEBUG_BUILD
+                printf("Skipping today\n");
+#endif
+                delete_rules();
+                sleep_time = DAY_SEC - now;
+            } else if (target_times->start <= now) {
                 // blocking should be on
                 add_rules();
                 sleep_time = (DAY_SEC - now) + target_times->stop;

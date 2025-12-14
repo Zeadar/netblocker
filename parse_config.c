@@ -21,8 +21,8 @@ enum parse_type {
     DAYS,
 };
 
-ptrdiff_t strip_fluff(char *line) {
-    char *read = line, *write = line;
+ptrdiff_t strip_fluff(char *str) {
+    char *read = str, *write = str;
 
     while (*read != '\0') {
         if (*read == ' ' || *read == '\t' || *read == '\n') {
@@ -41,7 +41,7 @@ ptrdiff_t strip_fluff(char *line) {
     }
 
     *write = '\0';
-    return write - line;
+    return write - str;
 }
 
 enum parse_type parse_time(char *buf, int *out_buf) {
@@ -78,6 +78,40 @@ enum parse_type parse_time(char *buf, int *out_buf) {
     *out_buf = atoi(buf) * 3600 + atoi(minute_buf) * 60;
 
     return SUCCESS;
+}
+
+int parse_weekdays(char *buf) {
+    int bin_day = 0;
+
+    while (*buf != '\0') {
+        switch (*buf) {
+        case '1':
+            bin_day |= MONDAY;
+            break;
+        case '2':
+            bin_day |= TUESDAY;
+            break;
+        case '3':
+            bin_day |= WEDNESDAY;
+            break;
+        case '4':
+            bin_day |= THURSDAY;
+            break;
+        case '5':
+            bin_day |= FRIDAY;
+            break;
+        case '6':
+            bin_day |= SATURDAY;
+            break;
+        case '7':
+            bin_day |= SUNDAY;
+            break;
+        }
+
+        ++buf;
+    }
+
+    return bin_day;
 }
 
 enum parse_type get_type(char **buf) {
@@ -118,7 +152,7 @@ struct times parse_config() {
     enum parse_type pt;
     int num_read = 0;
     int line_nr = 0;
-    int out_buf = 0;
+    int num_out = 0;
 
     if (config == 0) {
         fprintf(stderr, "could not find %s\n", LOCAL_CONF_NAME);
@@ -136,14 +170,19 @@ struct times parse_config() {
 
         switch (pt) {
         case START:
-            pt = parse_time(temp_buf, &out_buf);
-            conf_times.start = out_buf;
+            pt = parse_time(temp_buf, &num_out);
+            if (pt == ERROR_PARSING)
+                exit(300);
+            conf_times.start = num_out;
             break;
         case STOP:
-            pt = parse_time(temp_buf, &out_buf);
-            conf_times.stop = out_buf;
+            pt = parse_time(temp_buf, &num_out);
+            if (pt == ERROR_PARSING)
+                exit(300);
+            conf_times.stop = num_out;
             break;
         case DAYS:
+            conf_times.days = parse_weekdays(temp_buf);
             break;
         default:
             fprintf(stderr,
@@ -151,7 +190,6 @@ struct times parse_config() {
                     line_nr);
             exit(300);
         }
-
     }
 
     fclose(config);
