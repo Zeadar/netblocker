@@ -136,7 +136,7 @@ void *scheduler(void *time_ptr) {
                 printf("Skipping today\n");
 #endif
                 delete_rules();
-                sleep_time = DAY_SEC - now;
+                sleep_time = (DAY_SEC - now) + target_times->start;
             } else if (target_times->start <= now
                        && target_times->stop > now) {
                 // blocking should be on
@@ -169,7 +169,7 @@ void *scheduler(void *time_ptr) {
                 printf("Skipping today\n");
 #endif
                 delete_rules();
-                sleep_time = DAY_SEC - now;
+                sleep_time = (DAY_SEC - now) + target_times->start;
             } else if (target_times->start <= now) {
                 // blocking should be on
                 add_rules();
